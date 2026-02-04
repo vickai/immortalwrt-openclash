@@ -1,0 +1,94 @@
+#!/bin/sh /etc/rc.common
+
+START=19
+USE_PROCD=1
+FIREWALL_USER="/etc/firewall.user"
+
+CLASH_REDIR_PORT=7892
+CLASH_TPROXY_PORT=7895
+CLASH_DNS_PORT=7874
+
+detect_network() {
+    WAN_IF=$(ip route | awk '/default/ {print $5; exit}')
+    [ -z "$WAN_IF" ] && WAN_IF="eth0"
+    CONTAINER_IP=$(ip -4 addr show "$WAN_IF" | awk '/inet / {print $2}' | cut -d/ -f1)
+
+    # 尝试获取 LAN 接口，默认为 eth0
+    LAN_IF=$(uci get network.lan.ifname 2>/dev/null)
+    [ -z "$LAN_IF" ] && LAN_IF="eth0"
+    LAN_NET=$(ip -4 addr show "$LAN_IF" | awk '/inet / {print $2}')
+    [ -z "$LAN_NET" ] && LAN_NET="192.168.1.0/24"
+}
+
+generate_iptables_rules() {
+cat > "$FIREWALL_USER" <<EOF
+# iptables rules for OpenClash Bypass
+iptables -t nat -N CLASH_REDIRECT 2>/dev/null
+iptables -t nat -F CLASH_REDIRECT
+iptables -t mangle -N CLASH_TPROXY 2>/dev/null
+iptables -t mangle -F CLASH_TPROXY
+
+# Hook into PREROUTING
+iptables -t nat -C PREROUTING -j CLASH_REDIRECT 2>/dev/null || iptables -t nat -A PREROUTING -j CLASH_REDIRECT
+iptables -t mangle -C PREROUTING -j CLASH_TPROXY 2>/dev/null || iptables -t mangle -A PREROUTING -j CLASH_TPROXY
+
+# Bypass logic
+iptables -t nat    -A CLASH_REDIRECT -i $LAN_IF -s $LAN_NET -d $LAN_NET -j RETURN
+iptables -t mangle -A CLASH_TPROXY  -i $LAN_IF -s $LAN_NET -d $LAN_NET -j RETURN
+[ -n "$CONTAINER_IP" ] && {
+  iptables -t nat    -A CLASH_REDIRECT -s $CONTAINER_IP -j RETURN
+  iptables -t mangle -A CLASH_TPROXY  -s $CONTAINER_IP -j RETURN
+}
+
+# Redirects
+iptables -t nat -A CLASH_REDIRECT -p udp --dport 53 -j REDIRECT --to-ports $CLASH_DNS_PORT
+iptables -t nat -A CLASH_REDIRECT -p tcp -j REDIRECT --to-ports $CLASH_REDIR_PORT
+iptables -t mangle -A CLASH_TPROXY -p udp -j TPROXY --on-port $CLASH_TPROXY_PORT --tproxy-mark 1
+iptables -t mangle -A CLASH_TPROXY -p udp -j MARK --set-mark 1
+
+# Routing rule for TProxy
+ip rule show | grep -q "fwmark 0x1 lookup 100" || ip rule add fwmark 1 table 100
+ip route show table 100 | grep -q "local 0.0.0.0/0 dev lo" || ip route add local 0.0.0.0/0 dev lo table 100
+EOF
+}
+
+generate_nft_rules() {
+cat >> "$FIREWALL_USER" <<EOF
+# nftables rules for OpenClash Bypass
+if command -v nft >/dev/null 2>&1; then
+  nft list tables | grep -q "table inet clash" >/dev/null 2>&1 || nft -f - <<NFT
+table inet clash {
+  chain prerouting {
+    type filter hook prerouting priority mangle; policy accept;
+    ip saddr $LAN_NET ip daddr $LAN_NET return
+    $( [ -n "$CONTAINER_IP" ] && echo "ip saddr $CONTAINER_IP return" )
+
+    # DNS Redirect
+    udp dport 53 redirect to :$CLASH_DNS_PORT
+
+    # Traffic Redirect
+    tcp redirect to :$CLASH_REDIR_PORT
+    udp tproxy to :$CLASH_TPROXY_PORT meta mark set 1
+  }
+}
+NFT
+fi
+EOF
+}
+
+start_service() {
+    detect_network
+    generate_iptables_rules
+    generate_nft_rules
+    /etc/init.d/firewall reload
+}
+
+stop_service() {
+    iptables -t nat -D PREROUTING -j CLASH_REDIRECT 2>/dev/null
+    iptables -t mangle -D PREROUTING -j CLASH_TPROXY 2>/dev/null
+    iptables -t nat -F CLASH_REDIRECT 2>/dev/null
+    iptables -t nat -X CLASH_REDIRECT 2>/dev/null
+    iptables -t mangle -F CLASH_TPROXY 2>/dev/null
+    iptables -t mangle -X CLASH_TPROXY 2>/dev/null
+    if command -v nft >/dev/null 2>&1; then nft delete table inet clash 2>/dev/null; fi
+}

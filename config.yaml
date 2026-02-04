@@ -1,0 +1,652 @@
+---
+proxy-providers:
+  狗狗机场:
+    url: "<机场订阅地址>"
+    type: http
+    interval: 7200
+    health-check:
+      enable: true
+      url: https://www.gstatic.com/generate_204
+      interval: 300
+    proxy: 直连
+
+  牛逼机场:
+    url: "<机场订阅地址>"
+    type: http
+    interval: 7200
+    health-check:
+      enable: true
+      url: https://www.gstatic.com/generate_204
+      interval: 300
+    proxy: 直连
+
+proxies:
+  - {name: 直连, type: direct}
+  - {name: 拒绝, type: reject}
+
+port: 7890
+socks-port: 7891
+redir-port: 7892
+mixed-port: 7893
+tproxy-port: 7895
+allow-lan: true
+mode: rule
+log-level: info
+external-controller: 0.0.0.0:9090
+secret: aAxCZs5P
+
+dns:
+  enable: true
+  listen: 0.0.0.0:7874
+  ipv6: false
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+
+  # 主 DNS（国内 DoH）
+  nameserver:
+    - https://223.5.5.5/dns-query
+    - https://119.29.29.29/dns-query
+
+  # fallback（海外 DoH + 国内兜底）
+  fallback:
+    - https://1.1.1.1/dns-query
+    - https://8.8.8.8/dns-query
+    - 114.114.114.114
+
+  # fallback 过滤（防污染）
+  fallback-filter:
+    geoip: true
+    geoip-code: CN
+    ipcidr:
+      - 240.0.0.0/4
+
+  # IoT / 局域网 / NTP 兼容增强
+  fake-ip-filter-mode: blacklist
+  fake-ip-filter:
+    - +.lan
+    - +.local
+    - geosite:cn
+    - "*.local"
+    - "*.router"
+    - "*.localdomain"
+    - "*.home.arpa"
+    - "*.invalid"
+    - "*.localhost"
+    - "ntp.*"
+    - "*.ntp.org"
+    - "time.*"
+    - "pool.ntp.org"
+    - "*.synology.com"
+    - "*.qnap.com"
+    - "*.tplinkwifi.net"
+    - "*.miwifi.com"
+    - "*.huawei.com"
+    - "*.haier.com"
+    - "*.hisilicon.com"
+    - "*.aqara.com"
+    - "*.tuya.com"
+    - "*.xiaomi.com"
+    - "*.mi.com"
+    - "*.home"
+
+  respect-rules: true
+  use-hosts: true
+  use-system-hosts: true
+
+# IoT / 局域网域名优先走本地 DNS
+nameserver-policy:
+  "geosite:cn": 114.114.114.114
+  "geosite:private": 114.114.114.114
+  "geosite:apple-cn": 114.114.114.114
+
+# TCP/UDP 优化
+tcp-concurrent: true
+unified-delay: true
+keep-alive-interval: 15
+
+ipv6: false
+
+profile:
+  store-selected: true
+  store-fake-ip: true
+
+
+default: &default
+  type: select
+  proxies:
+    - 直连
+    - 所有-手动
+    - 所有-自动
+    - 其他-手动
+    - 美国-故转
+    - 香港-故转
+    - 台湾-故转
+    - 日本-故转
+    - 新加坡-故转
+    - 韩国-故转
+    - 英国-故转
+    - 大流量线路
+    - 拒绝
+
+
+proxy-groups:
+  - {name: 自选站点, <<: *default}
+  - {name: 检测工具, <<: *default}
+  # ----------------------------------------------------------------------------
+  # --- AI 服务 ---
+  - name: Gemini
+    type: select
+    proxies:
+      - 美国-故转
+      - 日本-故转
+      - 台湾-故转
+      - 新加坡-故转
+      - 韩国-故转
+      - 其他-手动
+      - 所有-手动
+      - 拒绝
+  - name: OpenAI
+    type: select
+    proxies:
+      - 美国-故转
+      - 日本-故转
+      - 台湾-故转
+      - 新加坡-故转
+      - 韩国-故转
+      - 英国-故转
+      - 其他-手动
+      - 所有-手动
+      - 拒绝
+  # ----------------------------------------------------------------------------
+  - name: Copilot
+    type: select
+    proxies:
+      - 台湾-故转
+      - 美国-故转
+      - 英国-故转
+      - 日本-故转
+      - 新加坡-故转
+      - 香港-故转
+      - 所有-手动
+      - 拒绝
+  - name: Anthropic
+    type: select
+    proxies:
+      - 美国-故转
+      - 英国-故转
+      - 日本-故转
+      - 新加坡-故转
+      - 其他-手动
+      - 所有-手动
+      - 拒绝
+  # ----------------------------------------------------------------------------
+  - name: Groq
+    type: select
+    proxies:
+      - 美国-故转
+      - 日本-故转
+      - 台湾-故转
+      - 新加坡-故转
+      - 韩国-故转
+      - 所有-手动
+      - 拒绝
+  - name: Perplexity
+    type: select
+    proxies:
+      - 美国-故转
+      - 日本-故转
+      - 台湾-故转
+      - 新加坡-故转
+      - 韩国-故转
+      - 所有-手动
+      - 拒绝
+  # ----------------------------------------------------------------------------
+  # --- 社交与媒体 ---
+  - name: Meta
+    type: select
+    proxies:
+      - 香港-故转
+      - 新加坡-故转
+      - 日本-故转
+      - 台湾-故转
+      - 美国-故转
+      - 韩国-故转
+      - 所有-手动
+      - 拒绝
+  - name: X
+    type: select
+    proxies:
+      - 新加坡-故转
+      - 日本-故转
+      - 美国-故转
+      - 香港-故转
+      - 台湾-故转
+      - 英国-故转
+      - 所有-手动
+      - 拒绝
+  # ----------------------------------------------------------------------------
+  - name: Telegram
+    type: select
+    proxies:
+      - 新加坡-故转
+      - 香港-故转
+      - 日本-故转
+      - 台湾-故转
+      - 韩国-故转
+      - 美国-故转
+      - 其他-手动
+      - 所有-手动
+      - 拒绝
+  - name: TikTok
+    type: select
+    proxies:
+      - 日本-故转
+      - 美国-故转
+      - 台湾-故转
+      - 新加坡-故转
+      - 韩国-故转
+      - 其他-手动
+      - 拒绝
+  # ----------------------------------------------------------------------------
+  - name: YouTube
+    type: select
+    proxies:
+      - 香港-故转
+      - 新加坡-故转
+      - 日本-故转
+      - 台湾-故转
+      - 韩国-故转
+      - 美国-故转
+      - 所有-自动
+      - 大流量线路
+      - 拒绝
+  - {name: Wikimedia, <<: *default}
+  # ----------------------------------------------------------------------------
+  # --- 开发与常用服务 ---
+  - name: Google
+    type: select
+    proxies:
+      - 香港-故转
+      - 美国-故转
+      - 日本-故转
+      - 台湾-故转
+      - 新加坡-故转
+      - 韩国-故转
+      - 其他-手动
+      - 所有-手动
+      - 拒绝
+  - {name: Microsoft, <<: *default}
+  # ----------------------------------------------------------------------------
+  - {name: Github, <<: *default}
+  - {name: Docker, <<: *default}
+  # ----------------------------------------------------------------------------
+  - {name: 苹果海外, <<: *default}
+  - name: 广告过滤
+    type: select
+    proxies:
+      - 拒绝
+      - 直连
+      - 所有-手动
+  # ----------------------------------------------------------------------------
+  # --- 区域与兜底 (对应 Rules 的指向) ---
+  - name: 国外站点
+    type: select
+    proxies:
+      - 自动-优选
+      - 所有-自动
+      - 所有-手动
+      - 直连
+      - 拒绝
+  - name: 国内站点
+    type: select
+    proxies:
+      - 直连
+      - 所有-手动
+      - 拒绝
+  # ----------------------------------------------------------------------------
+  - name: 漏网之鱼
+    type: select
+    proxies:
+      - 自动-优选
+      - 所有-自动
+      - 所有-手动
+      - 直连
+      - 拒绝
+  # 自动-优选高级组
+  - name: 自动-优选
+    type: fallback
+    url: "http://www.gstatic.com/generate_204"
+    interval: 300
+    proxies:
+      - 香港-故转
+      - 台湾-故转
+      - 日本-故转
+      - 新加坡-故转
+      - 美国-故转
+      - 所有-自动
+  # ----------------------------------------------------------------------------
+  # 故障转移组
+  - name: 香港-故转
+    type: fallback
+    interval: 60
+    lazy: false
+    url: "http://www.gstatic.com/generate_204"
+    proxies: [香港-手动, 香港-自动]
+  - name: 台湾-故转
+    type: fallback
+    interval: 60
+    lazy: false
+    url: "http://www.gstatic.com/generate_204"
+    proxies: [台湾-手动, 台湾-自动]
+
+  - name: 日本-故转
+    type: fallback
+    interval: 60
+    lazy: false
+    url: "http://www.gstatic.com/generate_204"
+    proxies: [日本-手动, 日本-自动]
+  - name: 新加坡-故转
+    type: fallback
+    interval: 60
+    lazy: false
+    url: "http://www.gstatic.com/generate_204"
+    proxies: [新加坡-手动, 新加坡-自动]
+
+  - name: 韩国-故转
+    type: fallback
+    interval: 60
+    lazy: false
+    url: "http://www.gstatic.com/generate_204"
+    proxies: [韩国-手动, 韩国-自动]
+  - name: 美国-故转
+    type: fallback
+    interval: 60
+    lazy: false
+    url: "http://www.gstatic.com/generate_204"
+    proxies: [美国-手动, 美国-自动]
+
+  - name: 英国-故转
+    type: fallback
+    interval: 60
+    lazy: false
+    url: "http://www.gstatic.com/generate_204"
+    proxies: [英国-手动, 英国-自动]
+  - name: 其他-手动
+    type: select
+    url: "http://www.gstatic.com/generate_204"
+    interval: 300
+    include-all: true
+    filter: "(?=.*(德国|DE|Germany|🇩🇪|加拿大|CA|Canada|🇨🇦|澳洲|澳大利亚|AU|Australia|🇦🇺)).*$"
+
+  # 1. 香港 --------------------------------------------------------------------
+  - name: 香港-手动
+    type: select
+    url: "http://www.gstatic.com/generate_204"
+    interval: 300
+    include-all: true
+    filter: "(?=.*(广港|香港|HK|Hong Kong|🇭🇰|HongKong)).*$"
+  - name: 香港-自动
+    type: url-test
+    url: "http://www.gstatic.com/generate_204"
+    include-all: true
+    tolerance: 50
+    interval: 300
+    filter: "(?=.*(广港|香港|HK|Hong Kong|🇭🇰|HongKong)).*$"
+
+  # 2. 台湾 --------------------------------------------------------------------
+  - name: 台湾-手动
+    type: select
+    url: "http://www.gstatic.com/generate_204"
+    interval: 300
+    include-all: true
+    filter: "(?=.*(广台|台湾|台灣|TW|Tai Wan|🇹🇼|🇨🇳|TaiWan|Taiwan)).*$"
+  - name: 台湾-自动
+    type: url-test
+    url: "http://www.gstatic.com/generate_204"
+    include-all: true
+    tolerance: 50
+    interval: 300
+    filter: "(?=.*(广台|台湾|台灣|TW|Tai Wan|🇹🇼|🇨🇳|TaiWan|Taiwan)).*$"
+
+  # 3. 日本 --------------------------------------------------------------------
+  - name: 日本-手动
+    type: select
+    url: "http://www.gstatic.com/generate_204"
+    interval: 300
+    include-all: true
+    filter: "(?=.*(广日|日本|JP|川日|东京|大阪|泉日|埼玉|沪日|深日|🇯🇵|Japan)).*$"
+  - name: 日本-自动
+    type: url-test
+    url: "http://www.gstatic.com/generate_204"
+    include-all: true
+    tolerance: 50
+    interval: 300
+    filter: "(?=.*(广日|日本|JP|川日|东京|大阪|泉日|埼玉|沪日|深日|🇯🇵|Japan)).*$"
+
+  # 4. 新加坡 ------------------------------------------------------------------
+  - name: 新加坡-手动
+    type: select
+    url: "http://www.gstatic.com/generate_204"
+    interval: 300
+    include-all: true
+    filter: "(?=.*(广新|新加坡|SG|坡|狮城|🇸🇬|Singapore)).*$"
+  - name: 新加坡-自动
+    type: url-test
+    url: "http://www.gstatic.com/generate_204"
+    include-all: true
+    tolerance: 50
+    interval: 300
+    filter: "(?=.*(广新|新加坡|SG|坡|狮城|🇸🇬|Singapore)).*$"
+
+  # 5. 韩国 --------------------------------------------------------------------
+  - name: 韩国-手动
+    type: select
+    url: "http://www.gstatic.com/generate_204"
+    interval: 300
+    include-all: true
+    filter: "(?=.*(广韩|韩国|韓國|KR|首尔|春川|🇰🇷|Korea)).*$"
+  - name: 韩国-自动
+    type: url-test
+    url: "http://www.gstatic.com/generate_204"
+    include-all: true
+    tolerance: 50
+    interval: 300
+    filter: "(?=.*(广韩|韩国|韓國|KR|首尔|春川|🇰🇷|Korea)).*$"
+
+  # 6. 美国 --------------------------------------------------------------------
+  - name: 美国-手动
+    type: select
+    url: "http://www.gstatic.com/generate_204"
+    interval: 300
+    include-all: true
+    filter: "(?=.*(广美|US|美国|纽约|波特兰|达拉斯|俄勒|凤凰城|费利蒙|洛杉|圣何塞|圣克拉|西雅|芝加|旧金山|华盛顿|拉斯维加斯|🇺🇸|United States)).*$"
+  - name: 美国-自动
+    type: url-test
+    url: "http://www.gstatic.com/generate_204"
+    include-all: true
+    tolerance: 50
+    interval: 300
+    filter: "(?=.*(广美|US|美国|纽约|波特兰|达拉斯|俄勒|凤凰城|费利蒙|洛杉|圣何塞|圣克拉|西雅|芝加|旧金山|华盛顿|拉斯维加斯|🇺🇸|United States)).*$"
+
+  # 7. 英国 --------------------------------------------------------------------
+  - name: 英国-手动
+    type: select
+    url: "http://www.gstatic.com/generate_204"
+    interval: 300
+    include-all: true
+    filter: "(?=.*(英国|英|伦敦|UK|United Kingdom|🇬🇧|London)).*$"
+  - name: 英国-自动
+    type: url-test
+    url: "http://www.gstatic.com/generate_204"
+    include-all: true
+    tolerance: 50
+    interval: 300
+    filter: "(?=.*(英国|英|伦敦|UK|United Kingdom|🇬🇧|London)).*$"
+
+  # 8. 基础 --------------------------------------------------------------------
+  - name: 所有-手动
+    type: select
+    include-all: true
+    filter: "^((?!(直连|拒绝|建议)).)*$"
+  - name: 所有-自动
+    type: url-test
+    include-all: true
+    tolerance: 50
+    interval: 300
+    filter: "^((?!(直连|拒绝|建议)).)*$"
+
+  # 9. 大流量线路---------------------------------------------------------------
+  - name: 大流量线路
+    type: url-test
+    use:
+      - 牛逼机场
+    url: "http://www.gstatic.com/generate_204"
+    interval: 300
+    tolerance: 50
+    filter: "^((?!(直连|拒绝|到期|剩余|官网|客服|流量|Expire|Website|建议)).)*$"
+
+
+rules:
+  # 1. 最高优先级：自定义与检测
+  - RULE-SET,Speedtest,直连
+
+  # NTP服务
+  - DST-PORT,123,直连
+
+  # IoT / 局域网广播 / 组播 / 链路本地直连（极致兼容）
+  - IP-CIDR,224.0.0.0/4,直连
+  - IP-CIDR,239.0.0.0/8,直连
+  - IP-CIDR,255.255.255.255/32,直连
+  - IP-CIDR,169.254.0.0/16,直连
+  - IP-CIDR,127.0.0.0/8,直连
+
+  # IoT 常用端口直连
+  # SSDP / UPnP
+  - DST-PORT,1900,直连
+  # mDNS
+  - DST-PORT,5353,直连
+  # ONVIF
+  - DST-PORT,3702,直连
+  # 海康威视
+  - DST-PORT,8000,直连
+  # RTSP
+  - DST-PORT,554,直连
+  # 小米 IoT
+  - DST-PORT,7681,直连
+  # CoAP
+  - DST-PORT,5683,直连
+
+  # IoT / 智能家居常见域名直连
+  - DOMAIN-SUFFIX,miwifi.com,直连
+  - DOMAIN-SUFFIX,mi.com,直连
+  - DOMAIN-SUFFIX,xiaomi.com,直连
+  - DOMAIN-SUFFIX,aqara.com,直连
+  - DOMAIN-SUFFIX,tuya.com,直连
+  - DOMAIN-SUFFIX,haier.com,直连
+  - DOMAIN-SUFFIX,huawei.com,直连
+  - DOMAIN-SUFFIX,hisilicon.com,直连
+  - DOMAIN-SUFFIX,synology.com,直连
+  - DOMAIN-SUFFIX,qnap.com,直连
+  - DOMAIN-SUFFIX,local,直连
+  - DOMAIN-SUFFIX,home.arpa,直连
+
+  # 个人的自定义直连域名
+  - DOMAIN-SUFFIX,vickai.com,直连
+  - DOMAIN-SUFFIX,dawnxiao.pub,直连
+  - DOMAIN-SUFFIX,windowsupdate.com,直连
+
+  - RULE-SET,Ads / Domain,广告过滤
+  - RULE-SET,Custom / Domain,自选站点
+  - RULE-SET,Check / Domain,检测工具
+
+  # 2. AI 服务
+  - RULE-SET,Gemini / Domain,Gemini
+  - DOMAIN,alkalimakersuite-pa.googleapis.com,Gemini
+  - DOMAIN,proactivebackend-pa.googleapis.com,Gemini
+  - DOMAIN,gip-pa.googleapis.com,Gemini
+  - DOMAIN,oyd-pa.googleapis.com,Gemini
+  - DOMAIN,texttospeech.googleapis.com,Gemini
+  - DOMAIN-KEYWORD, gemini, Gemini
+
+  - RULE-SET,OpenAI / Domain,OpenAI
+  - RULE-SET,Anthropic / Domain,Anthropic
+  - RULE-SET,Groq / Domain,Groq
+  - RULE-SET,Perplexity / Domain,Perplexity
+
+  - DOMAIN-SUFFIX,copilot.microsoft.com,Copilot
+  - DOMAIN-SUFFIX,bing.com,Copilot
+  - DOMAIN-SUFFIX,bingapis.com,Copilot
+  - DOMAIN-SUFFIX,edgeservices.bing.com,Copilot
+  - DOMAIN-SUFFIX,sydney.bing.com,Copilot
+
+  # 3. 社交与流媒体
+  - RULE-SET,Meta / Domain,Meta
+  - RULE-SET,X / Domain,X
+  - RULE-SET,TikTok / Domain,TikTok
+  - RULE-SET,Telegram / Domain,Telegram
+  - RULE-SET,Telegram-ip / IP,Telegram,no-resolve
+  - RULE-SET,YouTube / Domain,YouTube
+  - RULE-SET,Wikimedia / Domain,Wikimedia
+
+  # 4. Apple 服务
+  - RULE-SET,Apple-CN / Domain,国内站点
+  - RULE-SET,Apple / Domain,苹果海外
+
+  # 5. 开发与常用大厂
+  - RULE-SET,Github / Domain,Github
+  - RULE-SET,Docker / Domain,Docker
+  - RULE-SET,Microsoft / Domain,Microsoft
+  - RULE-SET,Google / Domain,Google
+
+  # 6. 兜底逻辑
+  # GFW 列表走国外
+  - RULE-SET,GFW / Domain,国外站点
+  # 非大陆 IP 归属域名的走国外 (防止 GFW 列表漏杀)
+  - RULE-SET,geolocation-!cn / Domain,国外站点
+
+  # 7. 国内直连兜底
+  - RULE-SET,cn-domain / Domain,国内站点
+  - RULE-SET,cn-ip / IP,国内站点,no-resolve
+
+  # 8. 最终匹配
+  - MATCH,漏网之鱼
+
+rule-anchor:
+  ip: &ip {type: http, interval: 86400, behavior: ipcidr, format: mrs}
+  domain: &domain {type: http, interval: 86400, behavior: domain, format: mrs}
+  class: &class {type: http, interval: 86400, behavior: classical, format: text}
+
+rule-providers:
+  # --- 自定义规则 ---
+  Custom / Domain: {<<: *class, url: "https://gh-proxy.com/github.com/vickai/meta/raw/refs/heads/main/rules-dat/custom-rules.list"}
+  Check / Domain: {<<: *class, url: "https://gh-proxy.com/github.com/vickai/meta/raw/refs/heads/main/rules-dat/check-rules.list"}
+  # --- AI 服务 ---
+  Gemini / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/google-gemini.mrs"}
+  OpenAI / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/openai.mrs"}
+  Anthropic / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/anthropic.mrs"}
+  Groq / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/groq.mrs"}
+  Perplexity / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/perplexity.mrs"}
+  # --- 社交平台 ---
+  Meta / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/meta.mrs"}
+  X / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/x.mrs"}
+  TikTok / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/tiktok.mrs"}
+  Telegram / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/telegram.mrs"}
+  Telegram-ip / IP: {<<: *ip, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geoip/telegram.mrs"}
+  YouTube / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/youtube.mrs"}
+  # --- 开发与常用服务 ---
+  Github / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/github.mrs"}
+  Docker / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/docker.mrs"}
+  Microsoft / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/microsoft.mrs"}
+  Google / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/google.mrs"}
+  Wikimedia / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/wikimedia.mrs"}
+  Apple-CN / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/apple@cn.mrs"}
+  Apple / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/apple.mrs"}
+  # --- 兜底与分流规则 ---
+  GFW / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/gfw.mrs"}
+  geolocation-!cn / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/geolocation-!cn.mrs"}
+  cn-domain / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/cn.mrs"}
+  cn-ip / IP: {<<: *ip, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geoip/cn.mrs"}
+
+  # --- 补充服务 ---
+  Ads / Domain: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/category-ads-all.mrs"}
+  Speedtest: {<<: *domain, url: "https://gh-proxy.com/github.com/MetaCubeX/meta-rules-dat/raw/refs/heads/meta/geo/geosite/ookla-speedtest.mrs"}

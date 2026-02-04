@@ -1,0 +1,14 @@
+/* ============================
+   ttyd 中文字体覆盖（增强版）
+   ============================ */
+
+.xterm, .xterm * {
+    font-family: "Noto Sans Mono CJK SC", "WenQuanYi Micro Hei Mono", "DejaVu Sans Mono", monospace !important;
+    font-size: 13px;
+    line-height: 1.3;
+}
+
+/* LuCI 全局中文字体（可选） */
+body {
+    font-family: "Noto Sans CJK SC", "WenQuanYi Micro Hei", "DejaVu Sans", sans-serif !important;
+}

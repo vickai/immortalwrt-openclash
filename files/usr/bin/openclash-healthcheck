@@ -1,0 +1,150 @@
+#!/bin/sh
+# ============================================
+#   OpenClash 健康检查脚本
+#   - 检查进程 / 端口 / DNS / 代理连通性
+#   - 自动重启 OpenClash（带重启次数限制）
+#   - 避免误报、死循环、错误端口
+# ============================================
+
+LOG_FILE="/tmp/openclash_healthcheck.log"
+RESTART_COUNT_FILE="/tmp/openclash_restart_count"
+
+# 默认端口（如未从配置中解析到）
+CLASH_REDIR_PORT_DEFAULT=7892
+CLASH_TPROXY_PORT_DEFAULT=7895
+CLASH_DNS_PORT_DEFAULT=7874
+CLASH_PROXY_PORT_DEFAULT=7890
+
+CHECK_URL="https://www.gstatic.com/generate_204"
+OPENCLASH_CONFIG="/etc/openclash/config.yaml"
+
+log() {
+    # 简单日志轮转：超过 2000 行就清空
+    if [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE" 2>/dev/null)" -gt 2000 ]; then
+        : > "$LOG_FILE"
+    fi
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+# 从 OpenClash 配置中解析端口（解析失败则使用默认值）
+parse_ports() {
+    CLASH_REDIR_PORT=$(grep -E "^[[:space:]]*redir-port:" "$OPENCLASH_CONFIG" 2>/dev/null | awk '{print $2}' | tail -n1)
+    CLASH_TPROXY_PORT=$(grep -E "^[[:space:]]*tproxy-port:" "$OPENCLASH_CONFIG" 2>/dev/null | awk '{print $2}' | tail -n1)
+    CLASH_DNS_PORT=$(grep -E "^[[:space:]]*listen:" "$OPENCLASH_CONFIG" 2>/dev/null | sed 's/.*://;s/[^0-9].*//g' | tail -n1)
+    CLASH_PROXY_PORT=$(grep -E "^[[:space:]]*(mixed-port|port):" "$OPENCLASH_CONFIG" 2>/dev/null | awk '{print $2}' | tail -n1)
+
+    [ -z "$CLASH_REDIR_PORT" ] && CLASH_REDIR_PORT=$CLASH_REDIR_PORT_DEFAULT
+    [ -z "$CLASH_TPROXY_PORT" ] && CLASH_TPROXY_PORT=$CLASH_TPROXY_PORT_DEFAULT
+    [ -z "$CLASH_DNS_PORT" ] && CLASH_DNS_PORT=$CLASH_DNS_PORT_DEFAULT
+    [ -z "$CLASH_PROXY_PORT" ] && CLASH_PROXY_PORT=$CLASH_PROXY_PORT_DEFAULT
+}
+
+check_process() {
+    pidof clash clash-meta >/dev/null 2>&1
+    return $?
+}
+
+check_port() {
+    # 优先使用 ss，其次 netstat
+    if command -v ss >/dev/null 2>&1; then
+        ss -lntup 2>/dev/null | grep -q ":$1\b"
+    else
+        netstat -lntup 2>/dev/null | grep -q ":$1\b"
+    fi
+    return $?
+}
+
+check_dns() {
+    # 使用 nslookup 通过 Clash DNS 解析
+    command -v nslookup >/dev/null 2>&1 || return 1
+    nslookup www.baidu.com 127.0.0.1#"$CLASH_DNS_PORT" >/dev/null 2>&1
+    return $?
+}
+
+check_proxy() {
+    # 如果没有代理端口配置，直接跳过此检查
+    [ -z "$CLASH_PROXY_PORT" ] && return 0
+    command -v curl >/dev/null 2>&1 || return 1
+    curl -s --max-time 5 --proxy "http://127.0.0.1:$CLASH_PROXY_PORT" "$CHECK_URL" >/dev/null 2>&1
+    return $?
+}
+
+can_restart() {
+    COUNT=$(cat "$RESTART_COUNT_FILE" 2>/dev/null || echo 0)
+    if [ "$COUNT" -ge 5 ]; then
+        log "❌ 重启次数已达上限（$COUNT 次），不再重启 OpenClash"
+        return 1
+    fi
+    COUNT=$((COUNT + 1))
+    echo "$COUNT" > "$RESTART_COUNT_FILE"
+    return 0
+}
+
+restart_openclash() {
+    if ! can_restart; then
+        return 1
+    fi
+    log "⚠️ 检测到异常，正在重启 OpenClash..."
+    /etc/init.d/openclash stop >/dev/null 2>&1
+    sleep 2
+    /etc/init.d/openclash start >/dev/null 2>&1
+    sleep 5
+    return 0
+}
+
+# ============================
+# 主流程
+# ============================
+
+parse_ports
+
+log "===== OpenClash 健康检查开始 ====="
+log "当前端口：redir=$CLASH_REDIR_PORT, tproxy=$CLASH_TPROXY_PORT, dns=$CLASH_DNS_PORT, proxy=$CLASH_PROXY_PORT"
+
+# 1. Clash 进程检测
+if ! check_process; then
+    log "❌ Clash 进程不存在"
+    restart_openclash
+    exit 0
+else
+    log "✔ Clash 进程正常"
+fi
+
+# 2. redir-port 检测
+if ! check_port "$CLASH_REDIR_PORT"; then
+    log "❌ redir-port ($CLASH_REDIR_PORT) 未监听"
+    restart_openclash
+    exit 0
+else
+    log "✔ redir-port 正常"
+fi
+
+# 3. tproxy-port 检测
+if ! check_port "$CLASH_TPROXY_PORT"; then
+    log "❌ tproxy-port ($CLASH_TPROXY_PORT) 未监听"
+    restart_openclash
+    exit 0
+else
+    log "✔ tproxy-port 正常"
+fi
+
+# 4. DNS 检测
+if ! check_dns; then
+    log "❌ Clash DNS ($CLASH_DNS_PORT) 无响应"
+    restart_openclash
+    exit 0
+else
+    log "✔ Clash DNS 正常"
+fi
+
+# 5. 代理连通性检测（如果配置了代理端口）
+if ! check_proxy; then
+    log "❌ 代理无法访问外网（端口：$CLASH_PROXY_PORT）"
+    restart_openclash
+    exit 0
+else
+    log "✔ 代理连通性正常"
+fi
+
+log "===== OpenClash 健康检查完成：一切正常 ====="
+exit 0

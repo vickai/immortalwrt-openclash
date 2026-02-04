@@ -1,0 +1,4 @@
+# 修复中文日志（如果脚本存在）
+if [ -f /etc/openclash/custom/openclash-log-patch.sh ]; then
+    /bin/bash /etc/openclash/custom/openclash-log-patch.sh &
+fi
