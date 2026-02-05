@@ -27,6 +27,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
 
+    # 修复磁盘空间不足问题：OpenWrt 全源码编译需要大量空间
     - name: Free Disk Space (Ubuntu)
       uses: jlumbroso/free-disk-space@main
       with:
@@ -38,6 +39,7 @@ jobs:
         docker-images: true
         swap-storage: true
 
+    # 修复 Ubuntu 24.04 依赖问题：移除已废弃的 python3-distutils
     - name: Install dependencies
       run: |
         sudo apt update
@@ -53,14 +55,17 @@ jobs:
 
     - name: Prepare rootfs
       run: |
-        # 使用基础配置 (OpenClash 已在 .config.base 中启用)
-        cp .config.base .config
+        # 确保基础配置存在
+        if [ -f ".config.base" ]; then
+          cp .config.base .config
+        fi
 
-        # 执行构建脚本
-        bash build-rootfs.sh
+        # 执行构建脚本，增加 -x 以便在报错时查看详细执行过程
+        bash -x build-rootfs.sh
 
         if [ ! -f "openwrt-rootfs.tar.gz" ]; then
-          echo "❌ Rootfs build failed."
+          echo "❌ Rootfs build failed. Checking disk usage:"
+          df -h
           exit 1
         fi
 
@@ -71,7 +76,6 @@ jobs:
 
     - name: Build Docker image
       run: |
-        # 构建 OpenClash 专用镜像
         docker build \
           --build-arg VERSION=$VERSION \
           -t ghcr.io/${{ github.actor }}/immortalwrt-openclash:$VERSION \

@@ -1,5 +1,5 @@
 #!/bin/bash
-# 启用 -e 遇到错误立即停止，启用 -x 打印执行过程方便在 Action 日志中排错
+# 启用 -e 遇到错误立即停止，启用 -x 打印执行过程
 set -ex
 
 WORKDIR=$(pwd)
@@ -22,7 +22,7 @@ fi
 
 cd "$SRC_DIR"
 
-# 2. 更新 feeds 并强制安装必备包
+# 2. 更新 feeds
 ./scripts/feeds clean
 ./scripts/feeds update -a
 ./scripts/feeds install -a
@@ -31,29 +31,26 @@ cd "$SRC_DIR"
 if [ -f "$WORKDIR/.config" ]; then
     cp "$WORKDIR/.config" .config
 else
-    # 如果没有外部配置，至少执行 defconfig 生成基础架构配置
     make defconfig
 fi
 
-# 确保配置格式正确
+# 确保配置格式正确，避免交互式提问卡死脚本
 make oldconfig
 
-# 4. 关键修复：执行下载以减少编译时 IO 压力
-# 提前下载所有包的源码，避免编译时边下边编导致的网络/空间死锁
+# 4. 关键修复：提前下载所有包的源码，减少编译时的 IO 和空间压力
 make download -j8
 
 # 5. 执行编译
-# 如果多线程编译失败，自动回退到单线程 V=s 以打印具体错误原因
+# 如果并行编译失败，自动回退到单线程详细模式打印具体错误
 echo "Starting compilation..."
 make -j$(nproc) || make -j1 V=s || {
-    echo "❌ 编译失败，磁盘空间不足或代码冲突"
+    echo "❌ 编译失败，查看下方磁盘空间或代码报错"
     df -h
     exit 2
 }
 
 # 6. 查找并导出 rootfs
 echo "Searching for rootfs targets..."
-# 修改查找逻辑，确保精准匹配 rootfs 压缩包
 ROOTFS=$(find "$SRC_DIR/bin/targets" -name "*rootfs.tar.gz" | head -n 1)
 OUTPUT="$WORKDIR/openwrt-rootfs.tar.gz"
 
