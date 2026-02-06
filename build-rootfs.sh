@@ -27,17 +27,22 @@ cd "$SRC_DIR"
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
+# --- 关键修复：解决 Rust 编译 404 报错 ---
+# 强制禁用 Rust 的 CI LLVM 下载，改用本地源码编译（解决上游 ci-artifacts 404 问题）
+find feeds/packages/lang/rust -name Makefile -exec sed -i 's/RUST_USE_CI_LLVM:=true/RUST_USE_CI_LLVM:=false/g' {} +
+
 # 3. 配置文件处理
 if [ -f "$WORKDIR/.config" ]; then
     cp "$WORKDIR/.config" .config
 else
+    # 生成基础架构配置
     make defconfig
 fi
 
-# 确保配置格式正确，避免交互式提问卡死脚本
-make oldconfig
+# 确保配置格式正确，yes "" 用于自动回答所有新配置选项的提问，防止卡死
+yes "" | make oldconfig
 
-# 4. 关键修复：提前下载所有包的源码，减少编译时的 IO 和空间压力
+# 4. 提前下载所有包的源码，减少编译时的网络波动压力
 make download -j8
 
 # 5. 执行编译
@@ -51,6 +56,7 @@ make -j$(nproc) || make -j1 V=s || {
 
 # 6. 查找并导出 rootfs
 echo "Searching for rootfs targets..."
+# 精准匹配 rootfs 压缩包
 ROOTFS=$(find "$SRC_DIR/bin/targets" -name "*rootfs.tar.gz" | head -n 1)
 OUTPUT="$WORKDIR/openwrt-rootfs.tar.gz"
 
