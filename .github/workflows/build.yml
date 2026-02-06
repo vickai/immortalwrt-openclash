@@ -61,7 +61,8 @@ jobs:
 
           # 3. 提取 ImageBuilder 文件名 (适配 .tar.xz 或 .tar.zst)
           # 逻辑：查找包含 imagebuilder 和 Linux-x86_64 的行
-          IB_FILENAME=$(grep "imagebuilder" sha256sums | grep "Linux-x86_64" | head -n 1 | awk '{print $2}' | sed 's/*//g')
+          # 修复：使用 tr -d '*' 删除星号，比 sed 更安全
+          IB_FILENAME=$(grep "imagebuilder" sha256sums | grep "Linux-x86_64" | head -n 1 | awk '{print $2}' | tr -d '*')
 
           if [ -z "$IB_FILENAME" ]; then
             echo "Error: ImageBuilder filename not found in sha256sums."
@@ -82,7 +83,7 @@ jobs:
 
       - name: Prepare Clash Kernel
         run: |
-          # 创建存放内核的目录 (ImageBuilder 会把 files 目录覆盖到 rootfs)
+          # 创建存放内核的目录
           mkdir -p imagebuilder/files/etc/openclash/core
 
           KERNEL_OPT="${{ inputs.kernel_version }}"
@@ -109,14 +110,27 @@ jobs:
         run: |
           mkdir -p imagebuilder/packages/custom
 
-          echo "Fetching latest OpenClash release..."
-          OC_URL=$(curl -sL https://api.github.com/repos/${OPENCLASH_REPO}/releases/latest | \
+          echo "Fetching OpenClash release info..."
+
+          # 1. 使用 /releases 接口以获取列表 (包含 Pre-release/Beta)
+          # 2. 添加 GitHub Token 避免 API 限流
+          # 3. 提取第一个(最新的)包含 luci-app-openclash 和 .ipk 的下载链接
+          OC_URL=$(curl -sL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${OPENCLASH_REPO}/releases" | \
             grep "browser_download_url" | \
             grep "luci-app-openclash" | \
             grep ".ipk" | \
             head -n 1 | \
             cut -d '"' -f 4)
 
+          # 增加空值检查
+          if [ -z "$OC_URL" ]; then
+            echo "Error: Failed to extract OpenClash download URL."
+            echo "Possible reasons: API rate limit exceeded, or no IPK found in the latest release."
+            exit 1
+          fi
+
+          echo "Downloading OpenClash from: $OC_URL"
           wget -P imagebuilder/packages/custom "$OC_URL"
 
       - name: Generate Rootfs
