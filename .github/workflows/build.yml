@@ -45,7 +45,7 @@ jobs:
 
       - name: Download ImageBuilder
         run: |
-          DOWNLOAD_URL="https://downloads.immortalwrt.org/releases/${IM_VERSION}/targets/${TARGET_BOARD}/${TARGET_SUBTARGET}/immortalwrt-imagebuilder-${IM_VERSION}-${TARGET_BOARD}-${TARGET_SUBTARGET}.Linux-x86_64.tar.xz"
+          DOWNLOAD_URL="https://downloads.immortalwrt.org/releases/${IM_VERSION}/targets/${TARGET_BOARD}/${TARGET_SUBTARGET}/immortalwrt-imagebuilder-${IM_VERSION}-${TARGET_BOARD}-${TARGET_SUBTARGET}.Linux-x86_64.tar.zst"
           echo "Downloading ImageBuilder from: $DOWNLOAD_URL"
           wget -O imagebuilder.tar.xz "$DOWNLOAD_URL"
           mkdir -p imagebuilder
