@@ -208,3 +208,11 @@ jobs:
             --file docker/Dockerfile \
             --push \
             .
+
+      - name: Delete Old Images
+        uses: actions/delete-package-versions@v5
+        continue-on-error: true
+        with:
+          package-name: ${{ env.IMAGE_NAME }}
+          package-type: 'container'
+          min-versions-to-keep: 3
