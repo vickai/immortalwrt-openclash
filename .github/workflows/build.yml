@@ -3,10 +3,18 @@ name: Build ImmortalWrt Docker Image
 on:
   workflow_dispatch:
     inputs:
-      kernel_version:
-        description: 'Select Clash Meta Kernel Version'
+      build_type:
+        description: '选择构建类型 (Standard 为纯净版, OpenClash 为集成版)'
         required: true
-        default: 'v1-smart'  # 推荐默认 v3-smart，性能更好
+        default: 'openclash'
+        type: choice
+        options:
+          - standard
+          - openclash
+      kernel_version:
+        description: '选择 Clash Meta 内核版本 (仅对 OpenClash 版有效)'
+        required: true
+        default: 'v1-smart'
         type: choice
         options:
           - v1
@@ -17,13 +25,9 @@ on:
           - v3-smart
 
 env:
-  # 固件版本与架构
   IM_VERSION: "24.10.1"
   TARGET_BOARD: "x86"
   TARGET_SUBTARGET: "64"
-  # 镜像名称
-  IMAGE_NAME: "immortalwrt-openclash"
-  # OpenClash 仓库
   OPENCLASH_REPO: "vernesong/OpenClash"
 
 jobs:
@@ -38,43 +42,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Initialize Environment
-        env:
-          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo -E apt-get -y update
-          # 安装构建所需依赖
-          # genisoimage: 解决 mkisofs 缺失报错
-          # zstd: 解决新版固件解压问题
           sudo -E apt-get -y install build-essential libncurses5-dev libncursesw5-dev \
             zlib1g-dev gawk git gettext libssl-dev xsltproc rsync wget unzip python3 qemu-utils zstd genisoimage
 
       - name: Smart Download ImageBuilder
         run: |
-          # 1. 设定基础目录 URL
           BASE_URL="https://downloads.immortalwrt.org/releases/${IM_VERSION}/targets/${TARGET_BOARD}/${TARGET_SUBTARGET}"
-
-          # 2. 下载 sha256sums 校验文件
-          echo "Fetching sha256sums to detect filename..."
           wget -O sha256sums "$BASE_URL/sha256sums"
-
-          if [ ! -f sha256sums ]; then
-            echo "Error: Failed to fetch sha256sums. Check version info."
-            exit 1
-          fi
-
-          # 3. 提取 ImageBuilder 文件名 (适配 .tar.xz 或 .tar.zst)
           IB_FILENAME=$(grep "imagebuilder" sha256sums | grep "Linux-x86_64" | head -n 1 | awk '{print $2}' | tr -d '*')
-
-          if [ -z "$IB_FILENAME" ]; then
-            echo "Error: ImageBuilder filename not found in sha256sums."
-            exit 1
-          fi
-
-          echo "Detected ImageBuilder: $IB_FILENAME"
-
-          # 4. 下载并解压
           wget -O imagebuilder.tar "$BASE_URL/$IB_FILENAME"
-
           mkdir -p imagebuilder
           if [[ "$IB_FILENAME" == *".zst" ]]; then
             tar -I zstd -xf imagebuilder.tar -C imagebuilder --strip-components=1
@@ -83,36 +61,26 @@ jobs:
           fi
 
       - name: Prepare Clash Kernel
+        if: github.event.inputs.build_type == 'openclash'
         run: |
-          # 创建存放内核的目录
           mkdir -p imagebuilder/files/etc/openclash/core
-
           KERNEL_OPT="${{ inputs.kernel_version }}"
           BASE_URL="https://raw.githubusercontent.com/vernesong/OpenClash/core/master"
-
-          # 构造下载链接
           if [[ "$KERNEL_OPT" == *"-smart"* ]]; then
             VER=${KERNEL_OPT%-smart}
             DOWNLOAD_URL="${BASE_URL}/smart/clash-linux-amd64-${VER}.tar.gz"
           else
             DOWNLOAD_URL="${BASE_URL}/meta/clash-linux-amd64-${KERNEL_OPT}.tar.gz"
           fi
-
-          echo "Downloading Kernel: $DOWNLOAD_URL"
           wget -O kernel.tar.gz "$DOWNLOAD_URL"
-
-          # 解压并重命名为 clash_meta
           tar -xzf kernel.tar.gz
           mv clash* imagebuilder/files/etc/openclash/core/clash_meta
           chmod +x imagebuilder/files/etc/openclash/core/clash_meta
 
       - name: Download Latest OpenClash
+        if: github.event.inputs.build_type == 'openclash'
         run: |
           mkdir -p imagebuilder/packages/custom
-
-          echo "Fetching OpenClash release info..."
-
-          # 使用 /releases 接口以获取列表 (包含 Pre-release/Beta)
           OC_URL=$(curl -sL -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/${OPENCLASH_REPO}/releases" | \
             grep "browser_download_url" | \
@@ -120,27 +88,22 @@ jobs:
             grep ".ipk" | \
             head -n 1 | \
             cut -d '"' -f 4)
-
-          if [ -z "$OC_URL" ]; then
-            echo "Error: Failed to extract OpenClash download URL."
-            exit 1
-          fi
-
-          echo "Downloading OpenClash from: $OC_URL"
           wget -P imagebuilder/packages/custom "$OC_URL"
 
       - name: Generate Rootfs
         working-directory: ./imagebuilder
         run: |
-          # 1. 处理 packages.txt (去注释、去 Windows 换行符)
-          PACKAGES_LIST=$(grep -vE '^\s*#' ../packages.txt | tr -d '\r' | tr '\n' ' ')
+          # 处理软件包列表
+          if [[ "${{ github.event.inputs.build_type }}" == "standard" ]]; then
+            # 移除 OpenClash 及其依赖 (ruby, ruby-yaml)
+            PACKAGES_LIST=$(grep -vE '^\s*#' ../packages.txt | grep -vE 'ruby|luci-app-openclash' | tr -d '\r' | tr '\n' ' ')
+          else
+            PACKAGES_LIST=$(grep -vE '^\s*#' ../packages.txt | tr -d '\r' | tr '\n' ' ')
+          fi
 
           echo "Final Packages List: $PACKAGES_LIST"
 
-          # 2. 【关键优化】强力禁用非 docker 格式
-          # 我们只需要 CONFIG_TARGET_ROOTFS_TARGZ=y
-
-          # 先移除配置文件中已有的相关定义
+          # 强制配置为生成 rootfs.tar.gz
           sed -i '/CONFIG_TARGET_ROOTFS_EXT4FS/d' .config
           sed -i '/CONFIG_TARGET_ROOTFS_SQUASHFS/d' .config
           sed -i '/CONFIG_ISO_IMAGES/d' .config
@@ -150,7 +113,6 @@ jobs:
           sed -i '/CONFIG_QCOW2_IMAGES/d' .config
           sed -i '/CONFIG_TARGET_IMAGES_GZIP/d' .config
 
-          # 强制写入 "is not set" 到 .config
           cat <<EOF >> .config
           # CONFIG_TARGET_ROOTFS_EXT4FS is not set
           # CONFIG_TARGET_ROOTFS_SQUASHFS is not set
@@ -159,26 +121,14 @@ jobs:
           # CONFIG_VMDK_IMAGES is not set
           # CONFIG_VDI_IMAGES is not set
           # CONFIG_QCOW2_IMAGES is not set
+          CONFIG_TARGET_ROOTFS_TARGZ=y
           EOF
 
-          # 确保 TARGZ 开启
-          sed -i '/CONFIG_TARGET_ROOTFS_TARGZ/d' .config
-          echo "CONFIG_TARGET_ROOTFS_TARGZ=y" >> .config
-
-          # 3. 构建 rootfs (直接运行 make image，无需 defconfig)
           make image PROFILE="generic" PACKAGES="$PACKAGES_LIST" FILES="files"
 
       - name: Prepare Docker Context
         run: |
-          # 提取 rootfs.tar.gz
           find imagebuilder/bin/targets/${TARGET_BOARD}/${TARGET_SUBTARGET} -name "*rootfs.tar.gz" -exec mv {} ./rootfs.tar.gz \;
-
-          if [ ! -f rootfs.tar.gz ]; then
-            echo "Error: rootfs.tar.gz not found!"
-            # 调试：列出 build_dir 看看生成了什么
-            ls -R imagebuilder/bin/targets/
-            exit 1
-          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -192,19 +142,27 @@ jobs:
 
       - name: Build and Push
         run: |
-          # 生成时间戳
           DATE_TAG=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M)
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          FULL_IMAGE_NAME="ghcr.io/${REPO_OWNER}/${IMAGE_NAME}"
 
-          echo "Pushing tags: latest, $DATE_TAG"
+          # 根据构建类型确定镜像名称和版本标签
+          if [[ "${{ github.event.inputs.build_type }}" == "standard" ]]; then
+            CURRENT_IMAGE_NAME="immortalwrt"
+            VERSION_TAG="${{ env.IM_VERSION }}"
+          else
+            CURRENT_IMAGE_NAME="immortalwrt-openclash"
+            VERSION_TAG="openclash-${DATE_TAG}"
+          fi
 
-          # 【关键修复】添加 --provenance=false 移除 unknown/unknown 架构
+          FULL_IMAGE_PATH="ghcr.io/${REPO_OWNER}/${CURRENT_IMAGE_NAME}"
+
+          echo "Pushing to ${FULL_IMAGE_PATH} with tags: latest, ${VERSION_TAG}"
+
           docker buildx build \
             --platform linux/amd64 \
             --provenance=false \
-            --tag "${FULL_IMAGE_NAME}:${DATE_TAG}" \
-            --tag "${FULL_IMAGE_NAME}:latest" \
+            --tag "${FULL_IMAGE_PATH}:latest" \
+            --tag "${FULL_IMAGE_PATH}:${VERSION_TAG}" \
             --file docker/Dockerfile \
             --push \
             .
@@ -213,6 +171,9 @@ jobs:
         uses: actions/delete-package-versions@v5
         continue-on-error: true
         with:
-          package-name: ${{ env.IMAGE_NAME }}
+          # 同时清理两个可能的包名
+          package-name: |
+            immortalwrt
+            immortalwrt-openclash
           package-type: 'container'
           min-versions-to-keep: 3
