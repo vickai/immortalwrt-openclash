@@ -42,6 +42,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Initialize Environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo -E apt-get -y update
           sudo -E apt-get -y install build-essential libncurses5-dev libncursesw5-dev \
@@ -93,9 +95,9 @@ jobs:
       - name: Generate Rootfs
         working-directory: ./imagebuilder
         run: |
-          # 处理软件包列表
+          # 根据构建类型处理软件包列表
           if [[ "${{ github.event.inputs.build_type }}" == "standard" ]]; then
-            # 移除 OpenClash 及其依赖 (ruby, ruby-yaml)
+            # 移除 OpenClash 及其特有依赖 (ruby, ruby-yaml)
             PACKAGES_LIST=$(grep -vE '^\s*#' ../packages.txt | grep -vE 'ruby|luci-app-openclash' | tr -d '\r' | tr '\n' ' ')
           else
             PACKAGES_LIST=$(grep -vE '^\s*#' ../packages.txt | tr -d '\r' | tr '\n' ' ')
@@ -103,7 +105,7 @@ jobs:
 
           echo "Final Packages List: $PACKAGES_LIST"
 
-          # 强制配置为生成 rootfs.tar.gz
+          # 强制配置为仅生成 rootfs.tar.gz
           sed -i '/CONFIG_TARGET_ROOTFS_EXT4FS/d' .config
           sed -i '/CONFIG_TARGET_ROOTFS_SQUASHFS/d' .config
           sed -i '/CONFIG_ISO_IMAGES/d' .config
@@ -145,22 +147,29 @@ jobs:
           DATE_TAG=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M)
           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
 
-          # 根据构建类型确定镜像名称和版本标签
+          # 根据构建类型动态设置变量
           if [[ "${{ github.event.inputs.build_type }}" == "standard" ]]; then
             CURRENT_IMAGE_NAME="immortalwrt"
             VERSION_TAG="${{ env.IM_VERSION }}"
+            TITLE="ImmortalWrt Docker Image"
+            DESC="基于 ImmortalWrt 官方 ImageBuilder 构建的纯净版 Docker 镜像"
+            PORTS="80 443"
           else
             CURRENT_IMAGE_NAME="immortalwrt-openclash"
             VERSION_TAG="openclash-${DATE_TAG}"
+            TITLE="ImmortalWrt OpenClash Docker"
+            DESC="基于 ImmortalWrt 构建并集成 OpenClash 及其核心依赖的 Docker 镜像"
+            PORTS="80 443 53/udp 53/tcp 7890 7891 7892 7893 7894 7895"
           fi
 
           FULL_IMAGE_PATH="ghcr.io/${REPO_OWNER}/${CURRENT_IMAGE_NAME}"
 
-          echo "Pushing to ${FULL_IMAGE_PATH} with tags: latest, ${VERSION_TAG}"
-
           docker buildx build \
             --platform linux/amd64 \
             --provenance=false \
+            --build-arg IMAGE_TITLE="${TITLE}" \
+            --build-arg IMAGE_DESC="${DESC}" \
+            --build-arg EXPOSE_PORTS="${PORTS}" \
             --tag "${FULL_IMAGE_PATH}:latest" \
             --tag "${FULL_IMAGE_PATH}:${VERSION_TAG}" \
             --file docker/Dockerfile \
@@ -171,7 +180,6 @@ jobs:
         uses: actions/delete-package-versions@v5
         continue-on-error: true
         with:
-          # 同时清理两个可能的包名
           package-name: |
             immortalwrt
             immortalwrt-openclash
