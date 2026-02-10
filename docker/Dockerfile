@@ -1,7 +1,7 @@
 FROM scratch
 
 # 添加 OCI 标准标签，用于关联 GitHub 仓库和描述
-LABEL org.opencontainers.image.source="https://github.com/vickai/AutoBuildImmortalWrtDocker"
+LABEL org.opencontainers.image.source="https://github.com/vickai/immortalwrt-openclash"
 LABEL org.opencontainers.image.description="基于immortalwrt自动构建集成openclash的docker镜像"
 LABEL org.opencontainers.image.licenses="GPL-3.0"
 LABEL org.opencontainers.image.title="ImmortalWrt OpenClash Docker"
