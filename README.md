@@ -12,7 +12,7 @@
 | 镜像名称 | 标签 (Tag) | 包含插件 | 开放端口 | 说明 |
 | --- | --- | --- | --- | --- |
 | `immortalwrt-openclash` | `latest`, `openclash-yymmdd` | OpenClash, Meta 内核, Ruby 等 | 80, 443, 53, 7890-7895 | 预装 OpenClash 的全功能旁路由镜像 |
-| `immortalwrt` | `latest`, `24.10.1` | 无（仅基础系统工具） | 80, 443 | 极简纯净版，适合作为基础容器或自建服务 |
+| `immortalwrt` | `latest`, `24.10.4` | 无（仅基础系统工具） | 80, 443 | 极简纯净版，适合作为基础容器或自建服务 |
 
 ## 🛠️ 包含组件 (通用)
 
